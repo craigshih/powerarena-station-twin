@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>引擎組裝站場域模型</title>
+  <meta name="description" content="車廠引擎組裝站的 3D 數位孿生：作業高台、承盤升降、三支攝影機視野與鎖附區域。">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0e14'/%3E%3Cpath d='M7 22h18M9 22V12h14v10M13 12V8h6v4' stroke='%23f2c230' stroke-width='2.4' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    { "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    } }
+  </script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <h1>引擎組裝站｜場域模型</h1>
+        <p>PoC 範圍：引擎室內引擎腳與變速箱組裝 · 3 分鐘偵測窗</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="export" class="btn ghost" type="button" title="下載攝影機內外參數與 ROI 座標">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg><span>匯出場域 JSON</span>
+      </button>
+      <button id="drawer-toggle" class="btn ghost only-drawer" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>參數</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="app">
+    <aside class="side side-left">
+      <section class="card">
+        <h2>視角</h2>
+        <div class="seg-grid">
+          <button data-preset="orbit" type="button">自由視角</button>
+          <button data-preset="top" type="button">由上往下</button>
+          <button data-preset="front" type="button">由前往後</button>
+          <button data-preset="side" type="button">側視</button>
+        </div>
+        <div class="seg-grid cams">
+          <button data-preset="LEFT_UP" type="button" style="--c:#5ee06a">LEFT UP</button>
+          <button data-preset="RIGHT_UP" type="button" style="--c:#f0b545">RIGHT UP</button>
+          <button data-preset="RIGHT" type="button" style="--c:#4ea8ff">RIGHT</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>圖層</h2>
+        <label class="toggle"><input type="checkbox" data-layer="frustums"><span></span>攝影機視錐</label>
+        <label class="toggle"><input type="checkbox" data-layer="zones"><span></span>鎖附區域 ROI</label>
+        <label class="toggle"><input type="checkbox" data-layer="dims"><span></span>尺寸標註</label>
+        <label class="toggle"><input type="checkbox" data-layer="people"><span></span>作業員與工具</label>
+        <label class="toggle"><input type="checkbox" data-layer="labels"><span></span>文字標籤</label>
+        <label class="toggle"><input type="checkbox" data-layer="bbox"><span></span>子畫面標註框</label>
+      </section>
+
+      <section class="card">
+        <h2>即時狀態</h2>
+        <dl class="stats">
+          <dt>目前階段</dt><dd id="st-phase" data-tone="muted">—</dd>
+          <dt>距檢查點</dt><dd id="st-checkpoint" class="num">—</dd>
+          <dt>承盤位移</dt><dd id="st-tray" class="num">—</dd>
+        </dl>
+        <h3 class="sub">事件紀錄</h3>
+        <ol id="event-log" class="log"></ol>
+      </section>
+    </aside>
+
+    <section class="stage">
+      <div id="viewport" class="viewport">
+        <div class="legend" aria-hidden="true">
+          <span><i style="--c:#ff8a3d"></i>第一階段 ROI</span>
+          <span><i style="--c:#3dd6d0"></i>第二階段 ROI</span>
+          <span><i style="--c:#f2c230"></i>高台邊界</span>
+        </div>
+      </div>
+
+      <div class="timeline">
+        <button id="t-play" class="play" type="button" aria-label="暫停"></button>
+        <div class="t-main">
+          <div class="t-head">
+            <span>標準作業循環</span>
+            <span id="t-time" class="num">0:00 / 3:00</span>
+          </div>
+          <div id="t-track" class="t-track">
+            <input id="t-slider" type="range" min="0" step="0.1" value="0" aria-label="時間軸">
+          </div>
+        </div>
+        <div class="speeds" role="group" aria-label="播放速度">
+          <button data-speed="1" type="button">1×</button>
+          <button data-speed="4" type="button" class="on">4×</button>
+          <button data-speed="10" type="button">10×</button>
+        </div>
+      </div>
+
+      <div id="pips" class="pips" aria-label="三支攝影機的模擬畫面"></div>
+    </section>
+
+    <aside class="side side-right" id="drawer">
+      <div class="tabs" role="tablist">
+        <button data-tab="params" role="tab" type="button">場域參數</button>
+        <button data-tab="info" role="tab" type="button">物件資訊</button>
+        <button data-tab="model" role="tab" type="button">模型規劃</button>
+        <button id="drawer-close" class="close only-drawer" type="button" aria-label="關閉">×</button>
+      </div>
+      <div class="pane" data-pane="params" id="params"></div>
+      <div class="pane" data-pane="info" id="info"></div>
+      <div class="pane prose" data-pane="model">
+        <h4>偵測管線（依業主實際做法）</h4>
+        <ol class="flow">
+          <li><b>YOLO 偵測</b><span>全畫面找出鎖附工具、作業員、承盤，建立 Anchor。用 YOLO11 微調小模型，可在邊緣裝置即時推論。</span></li>
+          <li><b>Anchor ＋ Linear Regression 追蹤</b><span>之後只在 Anchor 周圍搜尋，用迴歸算出平滑位移；偏移超過門檻或定期才重新以 YOLO 校正。軌跡不抖、不易認錯相似物件、較能抵抗遮蔽。</span></li>
+          <li><b>工具框 ∩ ROI</b><span>螺絲太小又常被遮住，改判斷「工具與指定區域重疊」。</span></li>
+          <li><b>A → B → C 狀態機</b><span>B（承盤下降）未來可改用 IoT 訊號取得精準時間點，視覺只需判斷工具是否在 B 之前進入 C 區。</span></li>
+        </ol>
+        <h4>要抓的三種異常</h4>
+        <ul class="tight">
+          <li><b>降前鎖附</b>：在承盤下降前就做第二階段（最關鍵）</li>
+          <li><b>超過鎖附時間</b>：第一階段沒在檢查點前 2 秒完成</li>
+          <li><b>錯誤步驟</b>：沒依 SOP 順序</li>
+        </ul>
+        <h4>為何不用 YOLO-World</h4>
+        <p>業主表示企業普遍不願提供資料，開放詞彙模型在這種場域跑不出成果，所以採用可微調的小模型。</p>
+        <h4>這個模型能怎麼用</h4>
+        <p>右下三個子畫面依訪綱的距離、高度、角度推算出攝影機位置。標註框是 3D 物件投影到畫面上的結果，下一階段可以用來產生合成訓練資料，也可以檢查視野有沒有被遮住。</p>
+      </div>
+    </aside>
+  </main>
+  <div class="scrim only-drawer" aria-hidden="true" onclick="document.body.classList.remove('drawer-open')"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
