@@ -69,13 +69,13 @@ function goPreset(key, instant = false) {
   activePreset = key;
   $$('[data-preset]').forEach((b) => b.classList.toggle('on', b.dataset.preset === key));
   const to = { pos: new THREE.Vector3(...p.pos), tgt: new THREE.Vector3(...p.tgt), fov: p.cam ? p.fov : fitFov(p.fov) };
+  // 進入攝影機視角時隱藏該支的視錐，避免擋住畫面
+  station.cameras.forEach((c) => (c.frustum.userData.hiddenByPov = c === p.cam));
   if (instant) {
     view.position.copy(to.pos); controls.target.copy(to.tgt); view.fov = to.fov; view.updateProjectionMatrix();
     return;
   }
   tween = { t: 0, from: { pos: view.position.clone(), tgt: controls.target.clone(), fov: view.fov }, to };
-  // 進入攝影機視角時隱藏該支的視錐，避免擋住畫面
-  station.cameras.forEach((c) => (c.frustum.userData.hiddenByPov = c === p.cam));
 }
 goPreset('orbit', true);
 
@@ -479,6 +479,16 @@ function loop() {
   }
   requestAnimationFrame(loop);
 }
+// 網址參數：?view=front 直接開到某個視角；?t=40 停在第 40 秒（簡報、截圖用）
+const query = new URLSearchParams(location.search);
+if (PRESETS[query.get('view')]) goPreset(query.get('view'), true);
+if (query.has('t')) {
+  simT = THREE.MathUtils.clamp(+query.get('t') || 0, 0, T.window);
+  playing = false;
+  playBtn.classList.add('paused');
+  playBtn.setAttribute('aria-label', '播放');
+}
+
 loop();
 
 // 使用者拖曳主視角時取消預設視角的高亮
