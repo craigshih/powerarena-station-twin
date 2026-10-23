@@ -77,6 +77,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; }
 
 .seg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .seg-grid.cams { grid-template-columns: repeat(3, 1fr); margin-top: 6px; }
+.seg-grid .wide { grid-column: 1 / -1; }
 .seg-grid button {
   height: 32px; border-radius: 7px; border: 1px solid var(--line); background: #0f1520;
   font-size: 13px; white-space: nowrap;
@@ -116,7 +117,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; }
 .log .tone-green { border-color: var(--green); }
 
 /* ── 舞台 ─────────────────────────── */
-.stage { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; min-width: 0; min-height: 0; }
+.stage { display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; min-width: 0; min-height: 0; }
 .viewport { position: relative; min-height: 0; overflow: hidden; }
 .viewport canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .labels { position: absolute; inset: 0; pointer-events: none; }
@@ -140,7 +141,34 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; }
 .tag-orange { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 50%, transparent); }
 .tag-teal { color: var(--teal); border-color: color-mix(in srgb, var(--teal) 50%, transparent); }
 .tag-tool { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.tag-step { font-size: 12px; padding: 3px 8px; }
+.tag-rail { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: rgba(30, 24, 6, .82); font-weight: 500; }
 .tag-dim { background: rgba(10, 30, 45, .85); color: #bfe8ff; border-color: #2f5c78; font-weight: 500; transform: none; }
+
+/* ── 流程條：1 下方螺絲 → 2 承盤下降 → 3 上方螺絲 ─────── */
+.flow-strip {
+  list-style: none; margin: 0; padding: 10px 16px 0; display: flex; align-items: stretch; gap: 8px;
+  background: var(--panel); border-top: 1px solid var(--line);
+}
+.flow-strip > * { zoom: var(--z); }
+.flow-strip li[data-step] {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 7px 12px;
+  border: 1px solid var(--line); border-radius: 9px; background: #0f1520; transition: border-color .2s, background .2s;
+}
+.flow-strip b {
+  width: 26px; height: 26px; flex: none; border-radius: 50%; display: grid; place-items: center;
+  font-size: 13px; background: #1d2a40; color: var(--muted);
+}
+.flow-strip span { font-size: 13.5px; font-weight: 600; line-height: 1.25; white-space: nowrap; }
+.flow-strip small { display: block; font-size: 11.5px; font-weight: 400; color: var(--muted); }
+.flow-strip .arrow { align-self: center; color: var(--faint); font-size: 18px; flex: none; }
+.flow-strip [data-step="1"] { --c: var(--orange); }
+.flow-strip [data-step="2"] { --c: var(--yellow); }
+.flow-strip [data-step="3"] { --c: var(--teal); }
+.flow-strip [data-state="now"] { border-color: var(--c); background: color-mix(in srgb, var(--c) 14%, #0f1520); }
+.flow-strip [data-state="now"] b { background: var(--c); color: #0a0e14; }
+.flow-strip [data-state="done"] b { background: var(--green); color: #0a0e14; }
+.flow-strip [data-state="done"] span { color: var(--muted); }
 
 /* ── 時間軸 ─────────────────────────── */
 .timeline {
@@ -283,6 +311,11 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; }
             mask-image: linear-gradient(90deg, #000 85%, transparent);
   }
   .pip { flex: 0 0 78%; scroll-snap-align: start; }
+  .flow-strip { gap: 4px; padding: 10px 12px 0; }
+  .flow-strip li[data-step] { flex-direction: column; gap: 4px; padding: 6px 4px; text-align: center; }
+  .flow-strip span { font-size: 12px; white-space: normal; }
+  .flow-strip small { font-size: 10.5px; }
+  .flow-strip .arrow { font-size: 14px; }
   .pip figcaption span { display: inline; }
   .side-left { order: 2; border: 0; padding: 12px 16px; }
   .side-right {

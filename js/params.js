@@ -82,16 +82,26 @@ export const CAMERAS = [
   },
 ];
 
-// 鎖附區域（ROI）。PoC 的判定邏輯是「工具框與指定區域重疊」，不直接偵測螺絲。
-// 位置與螺絲數量皆為假設，待模型開發同事現場說明後替換。
+// 四個螺絲孔位與鎖附順序（團隊現場紀錄）：
+//   步驟 1 左下、右下 → 步驟 2 承盤下降 → 步驟 3 左上、右上
+// 左右以車輛本身為準，與 LEFT UP「引擎室左側」同一套說法；由前往後看時，車輛左側在畫面右邊。
+// 孔位座標為示意，待實測。pos.y 以「高台面」為 0，載入時換算成世界座標。
 export const ZONES = [
-  { id: 'Z1L', phase: 1, side: 'L', label: '左引擎腳', pos: [0.56, 0.62, 1.78], size: [0.26, 0.22, 0.26], screws: 3 },
-  { id: 'Z1R', phase: 1, side: 'R', label: '右引擎腳', pos: [-0.56, 0.62, 1.78], size: [0.26, 0.22, 0.26], screws: 3 },
-  { id: 'Z1T', phase: 1, side: 'L', label: '變速箱固定點', pos: [0.5, 0.48, 1.34], size: [0.24, 0.2, 0.24], screws: 2 },
-  { id: 'Z2L', phase: 2, side: 'L', label: '車身固定點（左）', pos: [0.72, 0.3, 1.5], size: [0.2, 0.18, 0.5], screws: 2 },
-  { id: 'Z2R', phase: 2, side: 'R', label: '車身固定點（右）', pos: [-0.72, 0.3, 1.5], size: [0.2, 0.18, 0.5], screws: 2 },
+  { id: 'Z1L', step: 1, phase: 1, side: 'L', label: '左下螺絲', pos: [0.74, 0.55, 1.74], size: [0.2, 0.18, 0.2], screws: 1 },
+  { id: 'Z1R', step: 1, phase: 1, side: 'R', label: '右下螺絲', pos: [-0.74, 0.55, 1.74], size: [0.2, 0.18, 0.2], screws: 1 },
+  { id: 'Z2L', step: 3, phase: 2, side: 'L', label: '左上螺絲', pos: [0.74, 0.86, 1.74], size: [0.2, 0.18, 0.2], screws: 1 },
+  { id: 'Z2R', step: 3, phase: 2, side: 'R', label: '右上螺絲', pos: [-0.74, 0.86, 1.74], size: [0.2, 0.18, 0.2], screws: 1 },
 ];
-// ZONES 的 pos.y 以「高台面」為 0，載入時換算成世界座標。
+
+// 滑軌造成的限制：點選滑軌時顯示，也列在參數面板
+export const RAIL_LIMITS = [
+  { text: '產線持續移動，車頭進站到車尾出站共 8 分鐘', src: SRC.V1, status: 'confirmed' },
+  { text: '無法只停單一工站，異常時只能按停止鈕全線暫停', src: SRC.V1, status: 'confirmed' },
+  { text: '承盤隨節拍自動升降，承盤故障會全廠停線', src: SRC.V2, status: 'confirmed' },
+  { text: '車身比兩側高台間距寬，師傅只能站在車與高台交界作業', src: SRC.V2, status: 'confirmed' },
+  { text: '坑道被滑軌、載具與承盤佔用，加裝設備的空間有限', src: SRC.MD, status: 'confirmed' },
+  { text: '攝影機固定、車在移動，偵測必須在 3 分鐘窗口內完成', src: SRC.V1, status: 'derived' },
+];
 
 export const PHASE_COLOR = { 1: 0xff8a3d, 2: 0x3dd6d0 };
 

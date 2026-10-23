@@ -20,7 +20,7 @@
       <span class="mark" aria-hidden="true"></span>
       <div>
         <h1>引擎組裝站｜場域模型</h1>
-        <p>PoC 範圍：引擎室內引擎腳與變速箱組裝 · 3 分鐘偵測窗</p>
+        <p>PoC 範圍：引擎室內引擎腳與變速箱組裝 · 3 分鐘偵測窗 · 下方螺絲 → 承盤下降 → 上方螺絲</p>
       </div>
     </div>
     <div class="top-actions">
@@ -42,6 +42,7 @@
           <button data-preset="top" type="button">由上往下</button>
           <button data-preset="front" type="button">由前往後</button>
           <button data-preset="side" type="button">側視</button>
+          <button data-preset="bolts" type="button" class="wide">螺絲孔位特寫</button>
         </div>
         <div class="seg-grid cams">
           <button data-preset="LEFT_UP" type="button" style="--c:#5ee06a">LEFT UP</button>
@@ -53,7 +54,8 @@
       <section class="card">
         <h2>圖層</h2>
         <label class="toggle"><input type="checkbox" data-layer="frustums"><span></span>攝影機視錐</label>
-        <label class="toggle"><input type="checkbox" data-layer="zones"><span></span>鎖附區域 ROI</label>
+        <label class="toggle"><input type="checkbox" data-layer="zones"><span></span>螺絲孔位與 ROI</label>
+        <label class="toggle"><input type="checkbox" data-layer="rail"><span></span>產線滑軌</label>
         <label class="toggle"><input type="checkbox" data-layer="dims"><span></span>尺寸標註</label>
         <label class="toggle"><input type="checkbox" data-layer="people"><span></span>作業員與工具</label>
         <label class="toggle"><input type="checkbox" data-layer="labels"><span></span>文字標籤</label>
@@ -75,11 +77,20 @@
     <section class="stage">
       <div id="viewport" class="viewport">
         <div class="legend" aria-hidden="true">
-          <span><i style="--c:#ff8a3d"></i>第一階段 ROI</span>
-          <span><i style="--c:#3dd6d0"></i>第二階段 ROI</span>
+          <span><i style="--c:#ff8a3d"></i>步驟 1 下方螺絲</span>
+          <span><i style="--c:#3dd6d0"></i>步驟 3 上方螺絲</span>
+          <span><i style="--c:#3ccf6b"></i>已鎖好</span>
           <span><i style="--c:#f2c230"></i>高台邊界</span>
         </div>
       </div>
+
+      <ol id="flow" class="flow-strip" aria-label="鎖附流程">
+        <li data-step="1" data-state="todo"><b>1</b><span>鎖下方螺絲<small>左下、右下</small></span></li>
+        <li class="arrow" aria-hidden="true">→</li>
+        <li data-step="2" data-state="todo"><b>2</b><span>承盤下降<small>約 4 秒、0.45 m</small></span></li>
+        <li class="arrow" aria-hidden="true">→</li>
+        <li data-step="3" data-state="todo"><b>3</b><span>鎖上方螺絲<small>左上、右上</small></span></li>
+      </ol>
 
       <div class="timeline">
         <button id="t-play" class="play" type="button" aria-label="暫停"></button>

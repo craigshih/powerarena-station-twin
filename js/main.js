@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { P, CAMERAS, ZONES, SRC, PHASE_COLOR } from './params.js';
+import { P, CAMERAS, ZONES, RAIL_LIMITS, SRC, PHASE_COLOR } from './params.js';
 import { buildStation, stretch, projectBox } from './scene.js';
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -52,6 +52,7 @@ const PRESETS = {
   top: { pos: [0.01, 11.5, 1.4], tgt: [0, 1.4, 1.2], fov: 40, label: '由上往下' },
   front: { pos: [0, 4.4, 10.5], tgt: [0, 2.0, 0.6], fov: 40, label: '由前往後' },
   side: { pos: [10.5, 3.6, 1.2], tgt: [0, 2.0, 1.0], fov: 40, label: '側視' },
+  bolts: { pos: [0, 3.65, 3.75], tgt: [0, 2.05, 1.74], fov: 34, label: '螺絲孔位特寫', hideFrustums: true },
 };
 for (const c of station.cameras) {
   PRESETS[c.cfg.id] = { pos: c.pos.toArray(), tgt: c.tgt.toArray(), fov: c.vfov, label: c.cfg.name, cam: c };
@@ -70,7 +71,7 @@ function goPreset(key, instant = false) {
   $$('[data-preset]').forEach((b) => b.classList.toggle('on', b.dataset.preset === key));
   const to = { pos: new THREE.Vector3(...p.pos), tgt: new THREE.Vector3(...p.tgt), fov: p.cam ? p.fov : fitFov(p.fov) };
   // 進入攝影機視角時隱藏該支的視錐，避免擋住畫面
-  station.cameras.forEach((c) => (c.frustum.userData.hiddenByPov = c === p.cam));
+  station.cameras.forEach((c) => (c.frustum.userData.hiddenByPov = p.cam ? c === p.cam : !!p.hideFrustums));
   if (instant) {
     view.position.copy(to.pos); controls.target.copy(to.tgt); view.fov = to.fov; view.updateProjectionMatrix();
     return;
@@ -157,11 +158,11 @@ function toolTarget(side, t) {
 
 function phaseAt(t) {
   if (t < T.p1Start) return { key: 'ready', label: '待命', tone: 'muted' };
-  if (t < T.p1End) return { key: 'A', label: 'A｜第一階段鎖附', tone: 'orange' };
+  if (t < T.p1End) return { key: 'A', label: '1｜鎖下方螺絲', tone: 'orange' };
   if (t < T.checkpoint) return { key: 'gate', label: '檢查點前緩衝（工具須離開）', tone: 'yellow' };
-  if (t < T.trayEnd) return { key: 'B', label: 'B｜承盤下降', tone: 'yellow' };
+  if (t < T.trayEnd) return { key: 'B', label: '2｜承盤下降', tone: 'yellow' };
   if (t < T.p2Start) return { key: 'gate2', label: '承盤到位', tone: 'muted' };
-  if (t < T.p2End) return { key: 'C', label: 'C｜第二階段鎖附', tone: 'teal' };
+  if (t < T.p2End) return { key: 'C', label: '3｜鎖上方螺絲', tone: 'teal' };
   return { key: 'done', label: '本段完成', tone: 'green' };
 }
 
@@ -174,9 +175,9 @@ slider.max = T.window;
 // 時間軸上的階段色塊
 const track = $('#t-track');
 const segs = [
-  [T.p1Start, T.p1End, 'orange', 'A'],
-  [T.checkpoint, T.trayEnd, 'yellow', 'B'],
-  [T.p2Start, T.p2End, 'teal', 'C'],
+  [T.p1Start, T.p1End, 'orange', '1 下方螺絲'],
+  [T.checkpoint, T.trayEnd, 'yellow', '2'],
+  [T.p2Start, T.p2End, 'teal', '3 上方螺絲'],
 ];
 for (const [a, b, tone, txt] of segs) {
   const s = document.createElement('span');
@@ -214,7 +215,16 @@ function pushLog(text, tone) {
   while (log.children.length > 8) log.lastChild.remove();
 }
 
+const flowSteps = $$('#flow [data-step]');
+function stepState(step, t) {
+  const span = { 1: [T.p1Start, T.p1End], 2: [T.checkpoint, T.trayEnd], 3: [T.p2Start, T.p2End] }[step];
+  if (t >= span[1]) return 'done';
+  if (t >= span[0]) return 'now';
+  return 'todo';
+}
+
 function applyTime(t) {
+  for (const el of flowSteps) el.dataset.state = stepState(+el.dataset.step, t);
   // 承盤
   const drop = THREE.MathUtils.clamp((t - T.checkpoint) / P.trayDuration.v, 0, 1);
   station.tray.position.y = -ease(drop) * P.trayDrop.v;
@@ -241,8 +251,11 @@ function applyTime(t) {
     // 以工具前端位置判斷，避免工具外框擦過相鄰區域就誤判
     const hit = ['L', 'R'].some((side) => _toolBox.copy(z.box).expandByScalar(0.03).containsPoint(station.tools[side].group.position));
     const current = (z.cfg.phase === 1 && (ph.key === 'A' || ph.key === 'ready')) || (z.cfg.phase === 2 && ph.key === 'C');
-    z.material.opacity = hit ? 0.5 : current ? 0.2 : 0.07;
-    z.edges.material.opacity = hit ? 1 : current ? 0.85 : 0.3;
+    z.material.opacity = hit ? 0.42 : current ? 0.16 : 0.05;
+    z.edges.material.opacity = hit ? 1 : current ? 0.8 : 0.25;
+    const done = stepState(z.cfg.step, t) === 'done';
+    z.ringMat.color.setHex(done ? 0x3ccf6b : PHASE_COLOR[z.cfg.phase]);
+    z.ring.scale.setScalar(hit ? 1.25 + 0.15 * Math.sin(performance.now() / 120) : 1);
     if (hit && playing && !logged.has(z.cfg.id + (z.cfg.phase === 1 ? 'A' : 'C'))) {
       logged.add(z.cfg.id + (z.cfg.phase === 1 ? 'A' : 'C'));
       pushLog(`工具進入 <b>${z.cfg.label}</b>`, z.cfg.phase === 1 ? 'orange' : 'teal');
@@ -282,7 +295,7 @@ function setLayer(name, on) {
   layer.traverse((o) => { if (o.isCSS2DObject) o.visible = on; });
 }
 const narrow = matchMedia('(max-width: 767px)').matches;
-const layerState = { frustums: true, zones: true, dims: !narrow, labels: true, people: true, bbox: true };
+const layerState = { frustums: true, zones: true, dims: !narrow, labels: true, people: true, bbox: true, rail: true };
 setLayer('dims', layerState.dims);
 $$('[data-layer]').forEach((input) => {
   input.checked = layerState[input.dataset.layer];
@@ -344,8 +357,11 @@ $('#params').innerHTML = groups.map(([title, keys]) =>
   `<h4>${title}</h4><table>${keys.map((k) => paramRow(P[k])).join('')}</table>`).join('') +
   CAMERAS.map((c) => `<h4><span class="dot" style="--c:#${c.color.toString(16).padStart(6, '0')}"></span>攝影機 ${c.name}</h4>
     <table>${[c.distance, c.height, c.bearing].map(paramRow).join('')}</table>`).join('') +
-  `<h4>鎖附區域 ROI</h4><table>${ZONES.map((z) => `<tr><th>${z.label}<small>${z.phase === 1 ? '第一階段' : '第二階段'}</small></th>
-    <td class="num">${z.screws} <i>顆</i></td><td><span class="chip chip-assumed" title="${SRC.ASM}">假設</span></td></tr>`).join('')}</table>
+  `<h4>螺絲孔位與順序</h4><table>${ZONES.map((z) => `<tr><th>步驟 ${z.step}｜${z.label}<small>${z.step === 1 ? '承盤撐著時鎖' : '承盤下降後才能鎖'}</small></th>
+    <td class="num">${z.screws} <i>顆</i></td><td><span class="chip chip-confirmed" title="團隊現場紀錄">已確認</span></td></tr>`).join('')}</table>
+  <p class="src-note">順序來自團隊現場紀錄；孔位座標仍為示意。左右以車輛本身為準。</p>
+  <h4>滑軌造成的限制</h4><table>${RAIL_LIMITS.map((r) => `<tr><th>${r.text}</th><td></td>
+    <td><span class="chip chip-${r.status}" title="${r.src}">${STATUS[r.status]}</span></td></tr>`).join('')}</table>
   <p class="src-note">來源：${SRC.V2}、${SRC.V1}。「假設」項目等待業主或模型開發同事補充。</p>`;
 
 // ── 分頁 ─────────────────────────────────────

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { P, CAMERAS, ZONES, PHASE_COLOR, derive, cameraPose } from './params.js';
+import { P, CAMERAS, ZONES, RAIL_LIMITS, PHASE_COLOR, derive, cameraPose } from './params.js';
 
 const mat = (color, opts = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.1, ...opts });
 
@@ -88,6 +88,7 @@ export function buildStation(scene) {
   const peopleLayer = layer('people');
   const frustumLayer = layer('frustums');
   const zoneLayer = layer('zones');
+  const railLayer = layer('rail');
   const dimLayer = layer('dims');
 
   // ── 地面與坑道 ───────────────────────────
@@ -181,7 +182,15 @@ export function buildStation(scene) {
       new THREE.MeshBasicMaterial({ color: 0xe0303a })));
   }
   car.add(span(-halfBay, halfBay, bodyBottom, bayRim - 0.12, front - 0.12, front, M.body));
-  car.add(span(-halfBay + 0.2, halfBay - 0.2, bodyBottom + 0.05, bayRim - 0.18, front - 0.3, front - 0.14, M.dark)); // 水箱
+  // 散熱器：外框＋鰭片，是從前方攝影機看引擎室最明顯的地標
+  const radiator = new THREE.Group();
+  const rx0 = -0.5, rx1 = 0.5, ry0 = bodyBottom + 0.05, ry1 = bayRim - 0.04, rz0 = front - 0.3, rz1 = front - 0.14;
+  radiator.add(span(rx0, rx1, ry0, ry1, rz0, rz1 - 0.04, M.dark));
+  for (const [a, b] of [[ry0, ry0 + 0.04], [ry1 - 0.04, ry1]]) radiator.add(span(rx0, rx1, a, b, rz0, rz1, M.steel));
+  for (const [a, b] of [[rx0, rx0 + 0.04], [rx1 - 0.04, rx1]]) radiator.add(span(a, b, ry0, ry1, rz0, rz1, M.steel));
+  for (let x = rx0 + 0.07; x < rx1 - 0.05; x += 0.045) radiator.add(span(x, x + 0.012, ry0 + 0.04, ry1 - 0.04, rz1 - 0.05, rz1 - 0.02, M.engine));
+  setInfo(radiator, { title: '散熱器（水箱）', id: 'ent-radiator', rows: [['用途', '車頭最明顯的地標，用來對照四個螺絲孔位'], ['尺寸', '示意']] });
+  car.add(radiator);
   car.add(span(-halfBay + 0.1, halfBay - 0.1, bodyBottom, bayRim, bayBack - 0.04, bayBack, M.body)); // 防火牆
   // 引擎蓋（開啟）
   const hood = new THREE.Group();
@@ -206,15 +215,56 @@ export function buildStation(scene) {
     rows: [['引擎室寬', `${P.bayWidth.v} m（已確認）`], ['單側伸入高台上空', `${P.tireOverlap.v} m（推算）`],
       ['車長', `${P.vehicleLength.v} m（假設）`]] });
   setInfo(engine, { title: '引擎與變速箱', id: 'ent-powertrain',
-    rows: [['作業', '第一階段鎖引擎腳與變速箱，第二階段鎖車身固定'], ['尺寸', '示意']] });
+    rows: [['作業', '步驟 1 鎖左下、右下螺絲；承盤下降後，步驟 3 鎖左上、右上螺絲'], ['尺寸', '示意']] });
   car.add(engine);
-  vehicleLayer.add(car);
-  // 輸送載具（假設）：坑道內支撐車體的支柱
-  for (const s of [1, -1]) for (const z of [-1.6, 1.0]) {
-    const post = box(0.12, tireBottom + 0.3, 0.12, M.steel, s * 0.55, (tireBottom + 0.3) / 2, z);
-    setInfo(post, { title: '車體輸送載具', id: 'ent-carrier', rows: [['狀態', '支撐方式待確認，此為示意']] });
-    vehicleLayer.add(post);
+  // 螺絲孔位的固定支架：下方兩顆接在引擎側，上方兩顆接在車身內側
+  const halfFender = halfBay - 0.1;
+  for (const z of ZONES) {
+    const [x, y, zz] = z.pos;
+    const s = Math.sign(x), yy = H + y;
+    const inner = z.phase === 1 ? (s > 0 ? 0.34 : -0.4) : s * halfFender;
+    const bracket = span(Math.min(inner, x), Math.max(inner, x), yy - 0.05, yy - 0.01, zz - 0.07, zz + 0.07, M.steel);
+    setInfo(bracket, { title: `${z.label}的固定支架`, id: `ent-bracket-${z.id}`, rows: [['位置', '示意，待實測']] });
+    car.add(bracket);
   }
+  vehicleLayer.add(car);
+  // ── 產線滑軌與車體載具 ───────────────────────
+  // 車頭先進站、持續往 +Z 前進；載具在坑道內沿滑軌移動，承盤也裝在坑道裡
+  const railInfo = { title: '產線滑軌與車體載具', id: 'ent-rail',
+    rows: [['車行方向', '車頭先進站，持續往前移動'], ['移動速度', '待確認'],
+      ...RAIL_LIMITS.map((r, i) => [`限制 ${i + 1}`, `${r.text}（${r.status === 'confirmed' ? '已確認' : '推算'}）`])] };
+  const rail = new THREE.Group();
+  for (const s of [1, -1]) rail.add(span(s * 0.38 - 0.035, s * 0.38 + 0.035, 0, 0.09, -16, 16, M.steel));
+  for (let z = -15.6; z < 16; z += 0.8) rail.add(span(-0.6, 0.6, 0, 0.03, z - 0.06, z + 0.06, M.workerDark));
+  const carrier = new THREE.Group();
+  carrier.add(span(-0.48, 0.48, 0.12, 0.22, -2.1, 1.1, M.platform));
+  for (const s of [1, -1]) for (const z of [-1.9, 0.9]) {
+    const wheel = cyl(0.05, 0.06, M.dark, 16);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(s * 0.38, 0.12, z);
+    carrier.add(wheel);
+    carrier.add(box(0.1, tireBottom + 0.3 - 0.22, 0.1, M.steel, s * 0.42, (tireBottom + 0.3 + 0.22) / 2, z === 0.9 ? 1.0 : -1.6));
+  }
+  rail.add(carrier);
+  // 地面上的車行方向箭頭
+  const arrowMat = new THREE.MeshBasicMaterial({ color: 0xf2c230, transparent: true, opacity: 0.55 });
+  const chevron = new THREE.Shape();
+  chevron.moveTo(-0.32, 0); chevron.lineTo(0, 0.3); chevron.lineTo(0.32, 0);
+  chevron.lineTo(0.32, -0.12); chevron.lineTo(0, 0.18); chevron.lineTo(-0.32, -0.12); chevron.closePath();
+  for (const z of [-7.2, -6.6, -6.0]) {
+    const a = new THREE.Mesh(new THREE.ShapeGeometry(chevron), arrowMat);
+    a.rotation.x = -Math.PI / 2;
+    a.position.set(0, 0.012, z);
+    rail.add(a);
+  }
+  setInfo(rail, railInfo);
+  railLayer.add(rail);
+  const railTag = makeTag('產線滑軌（點我看限制）', 'tag-rail');
+  railTag.position.set(0, 0.35, -6.6);
+  railLayer.add(railTag);
+  const dirTag = makeTag('車行方向 →', 'tag-rail');
+  dirTag.position.set(0, 0.05, -5.6);
+  railLayer.add(dirTag);
 
   // ── 承盤（自動升降） ─────────────────────────
   const tray = new THREE.Group();
@@ -331,23 +381,37 @@ export function buildStation(scene) {
   handles.tools.L = makeTool(1);
   handles.tools.R = makeTool(-1);
 
-  // ── 鎖附區域 ROI ───────────────────────────
+  // ── 螺絲孔位與鎖附區域 ROI ───────────────────────
   for (const z of ZONES) {
     const color = PHASE_COLOR[z.phase];
-    const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.16, depthWrite: false });
+    const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12, depthWrite: false });
     const m = new THREE.Mesh(new THREE.BoxGeometry(...z.size), material);
     m.position.set(z.pos[0], H + z.pos[1], z.pos[2]);
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry),
       new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85 }));
     m.add(edges);
-    m.userData.info = { title: `ROI｜${z.label}`, id: z.id,
-      rows: [['階段', z.phase === 1 ? '第一階段（承盤撐起時）' : '第二階段（承盤下降後）'],
-        ['螺絲數', `${z.screws} 顆（假設）`], ['位置', '假設值，待模型開發同事說明']] };
+    const info = { title: `步驟 ${z.step}｜${z.label}`, id: z.id,
+      rows: [['順序', z.step === 1 ? '步驟 1：承盤撐著時鎖（左下、右下）' : '步驟 3：承盤下降後才能鎖（左上、右上）'],
+        ['左右', '以車輛本身為準；由前往後看時，車輛左側在畫面右邊'],
+        ['來源', '團隊現場紀錄'], ['孔位座標', '示意，待實測']] };
+    m.userData.info = info;
     zoneLayer.add(m);
-    const tag = makeTag(z.label, z.phase === 1 ? 'tag-orange' : 'tag-teal');
-    tag.position.set(0, z.size[1] / 2 + 0.02, 0);
+    // 螺絲頭＋外圈：讓四個孔位在主畫面與攝影機子畫面都看得到
+    const bolt = new THREE.Group();
+    bolt.position.copy(m.position);
+    const ringMat = new THREE.MeshBasicMaterial({ color });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.012, 8, 28), ringMat);
+    ring.rotation.x = Math.PI / 2;
+    bolt.add(ring);
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.03, 6), M.engine);
+    head.position.y = 0.005;
+    bolt.add(head);
+    bolt.traverse((o) => { if (o.isMesh) o.userData.info = info; });
+    zoneLayer.add(bolt);
+    const tag = makeTag(`${z.step}｜${z.label}`, z.phase === 1 ? 'tag-orange tag-step' : 'tag-teal tag-step');
+    tag.position.set(0, z.size[1] / 2 + 0.03, 0);
     m.add(tag);
-    handles.zones.push({ cfg: z, mesh: m, material, edges, box: new THREE.Box3().setFromObject(m) });
+    handles.zones.push({ cfg: z, mesh: m, material, edges, ring, ringMat, box: new THREE.Box3().setFromObject(m) });
   }
 
   // ── 三支攝影機 ─────────────────────────────
